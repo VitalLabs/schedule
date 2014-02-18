@@ -42,7 +42,7 @@
          (as-ts [num] (js/Date. num))
          (as-millis [num] num))
 
-(declare update-schedule-pattern)
+(declare ^:private update-schedule-pattern)
 (declare schedule-lazy-seq)
 
 #+cljs (def tz-offsets
@@ -55,7 +55,7 @@
           "PST" 8
           "PDT" 7})
 
-(defn calculate-next-schedule-instant
+(defn- calculate-next-schedule-instant
   [schedule]
   #+clj (let [pattern (.-pattern schedule)
               hour (.-hour pattern)
@@ -93,6 +93,20 @@
              (do (.setDate candidate-date (inc (.getDate candidate-date)))
                  (as-millis candidate-date)))))
 
+(defn print-to-writer
+  [val writer opts]
+  #+cljs (-pr-writer val writer opts)
+  #+clj (binding [*out* writer]
+          (pr val)))
+
+(defn print-schedule-to-abstract-writer
+  [schedule writer write-fn opts]
+  (let [pattern (.-pattern schedule)
+        start (.-start schedule)]
+    (write-fn writer "#schedule/schedule ")
+    (print-to-writer {:pattern pattern
+                      :start (as-ts start)} writer opts)))
+
 (deftype Schedule [pattern start]
   Pattern
   (anchor  [this t]    (Schedule. pattern (as-millis t)))
@@ -104,13 +118,13 @@
   #+cljs (-seq [this] (schedule-lazy-seq this))
   #+cljs IPrintWithWriter
   #+cljs (-pr-writer [schedule writer opts]
-           (let [pattern (.-pattern schedule)
-                 start (.-start schedule)]
-             (-write writer "#schedule/schedule ")
-             (-pr-writer {:pattern pattern
-                          :start (as-ts start)} writer opts))))
+           (print-schedule-to-abstract-writer schedule writer -write opts)))
 
-(defn- schedule-lazy-seq
+#+clj (defmethod print-method Schedule
+        [^Schedule schedule ^Writer w]
+        (print-schedule-to-abstract-writer schedule w #(.write %1 %2) nil))
+
+(defn schedule-lazy-seq
   [sched]
   (let [next-instant-ms (calculate-next-schedule-instant sched)
         pattern (.-pattern sched)]
@@ -124,28 +138,19 @@
    (Schedule. (apply f pattern args) start)))
 
 
-#+clj (defmethod print-method Schedule
-        [^Schedule schedule ^Writer w]
-        (let [pattern (.-pattern schedule)
-              start (.-start schedule)]
-          (.write w "#schedule/schedule ")
-          (binding [*out* w]
-            (pr {:pattern pattern
-                 :start (as-ts start)})) w))
-
-#+cljs (defn- cljs-print-to-writer
-         [pattern writer opts]
-         (let [hour (.-hour pattern)
-               tz (.-tz pattern)]
-           (-write writer "#schedule/pattern \"Every day")
-           (when hour
-             (-write writer " at ")
-             (-write writer (str hour))
-             (-write writer ":00"))
-           (when tz
-             (-write writer " ")
-             (-write writer tz))
-           (-write writer "\"")))
+(defn- print-pattern-to-abstract-writer
+  [pattern writer write-fn opts]
+  (let [hour (.-hour pattern)
+        tz (.-tz pattern)]
+    (write-fn writer "#schedule/pattern \"Every day")
+    (when hour
+      (write-fn writer " at ")
+      (write-fn writer (str hour))
+      (write-fn writer ":00"))
+    (when tz
+      (write-fn writer " ")
+      (write-fn writer tz))
+    (write-fn writer "\"")))
 
 (deftype FloatingPattern [period hour tz]
   Pattern
@@ -158,21 +163,11 @@
   #+cljs (-deref [pattern] (anchor pattern (current-time-millis)))
   #+cljs IPrintWithWriter
   #+cljs (-pr-writer [pattern writer opts]
-           (cljs-print-to-writer pattern writer opts)))
+           (print-pattern-to-abstract-writer pattern writer -write opts)))
 
 #+clj (defmethod print-method FloatingPattern
         [^FloatingPattern pattern ^Writer w]
-        (let [hour (.-hour pattern)
-              tz (.-tz pattern)]
-          (.write w "#schedule/pattern \"Every day")
-          (when hour
-            (.write w " at ")
-            (.write w (str hour))
-            (.write w ":00"))
-          (when tz
-            (.write w " ")
-            (.write w tz))
-          (.write w "\"")))
+        (print-pattern-to-abstract-writer pattern w #(.write %1 %2) nil))
 
 (defn read-schedule
   [m]
@@ -190,11 +185,16 @@
   [period hour tz]
   (FloatingPattern. period (string->int hour) tz))
 
-#+clj (defn read-floating-pattern
+(defn- match-globs
+  [re s]
+  #+clj (let [matcher (re-matcher re s)]
+          (re-find matcher))
+  #+cljs (re-matches re s))
+
+(defn read-floating-pattern
         [s]
         (let [re #"Every day(?: at (\d+):00)?(?: (.+))?"
-              matcher (re-matcher re s)
-              [match hour tz] (re-find matcher)]
+              [match hour tz] (match-globs re s)]
           (if match
             (floating-pattern nil hour tz)
             (throw (ex-info (str "Could not read floating pattern: \"" s \")
@@ -203,16 +203,5 @@
                              :hour hour
                              :tz tz})))))
 
-#+cljs (defn read-floating-pattern
-         [s]
-         (let [re #"Every day(?: at (\d+):00)?(?: (.+))?"
-               [match hour tz] (re-matches re s)]
-           (if match
-             (floating-pattern nil hour tz)
-             (throw (ex-info (str "Could not read floating pattern: \"" s \")
-                             {:s s
-                              :match match
-                              :hour hour
-                              :tz tz})))))
-
 #+cljs (reader/register-tag-parser! "schedule/pattern" read-floating-pattern)
+#+cljs (reader/register-tag-parser! "schedule/schedule" read-schedule)

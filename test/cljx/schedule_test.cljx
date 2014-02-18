@@ -1,10 +1,10 @@
 (ns schedule-test
   #+clj (:require [clojure.test :as t :refer (is deftest testing are)]
-                  [schedule :as s :refer (anchor current-time-millis)])
+                  [schedule :as s :refer (anchor)])
   #+cljs (:require-macros [cemerick.cljs.test
                            :refer (is deftest testing are)])
   #+cljs (:require [cemerick.cljs.test :as t]
-                   [schedule :as s :refer (anchor current-time-millis)]
+                   [schedule :as s :refer (anchor)]
                    [cljs.reader :refer (read-string)])
   (:import schedule.FloatingPattern
            schedule.Schedule))
@@ -30,6 +30,20 @@
        (FloatingPattern. nil nil "PST") "#schedule/pattern \"Every day PST\""
        (FloatingPattern. nil 9 "PST") "#schedule/pattern \"Every day at 9:00 PST\""))
 
+(deftest test-schedule-reading
+  (are [x y] (= (let [schedule (read-string x)
+                      pattern (.-pattern schedule)]
+                  [(s/as-ts (.-start schedule)) (.-hour pattern) (.-tz pattern)])
+                y)
+       "#schedule/schedule {:pattern #schedule/pattern \"Every day\", :start #inst \"2014-02-17T14:00:00.000-00:00\"}"
+       [#inst "2014-02-17T14:00:00.00-00:00" nil nil]
+       "#schedule/schedule {:pattern #schedule/pattern \"Every day at 9:00\", :start #inst \"2014-02-17T14:00:00.000-00:00\"}"
+       [#inst "2014-02-17T14:00:00.00-00:00" 9 nil]
+       "#schedule/schedule {:pattern #schedule/pattern \"Every day PST\", :start #inst \"2014-02-17T14:00:00.000-00:00\"}"
+       [#inst "2014-02-17T14:00:00.00-00:00" nil "PST"]
+       "#schedule/schedule {:pattern #schedule/pattern \"Every day at 9:00 PST\", :start #inst \"2014-02-17T14:00:00.000-00:00\"}"
+       [#inst "2014-02-17T14:00:00.00-00:00" 9 "PST"]))
+
 (deftest test-schedule-printing
   (are [x y] (= (pr-str x) y)
        (Schedule. (FloatingPattern. nil nil nil)
@@ -40,7 +54,7 @@
   (let [pattern (read-string "#schedule/pattern \"Every day at 9:00 PST\"")
         roughly (fn [tolerance x y]
                   (< (Math/abs (- x y)) tolerance))]
-    (is (roughly 50 (.-start @pattern) (current-time-millis)))))
+    (is (roughly 50 (.-start @pattern) (s/current-time-millis)))))
 
 (deftest test-schedule-seq
   (let [pattern (read-string "#schedule/pattern \"Every day at 9:00 PST\"")
