@@ -6,3 +6,9 @@ pom.xml
 .lein-deps-sum
 /target/repl-port
 /target/stale/extract-native.dependencies
+/target/classes/
+/target/cljsbuild-compiler-*
+/target/cljs
+/target/src
+/target/test
+/.lein-failures
