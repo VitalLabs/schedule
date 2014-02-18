@@ -45,6 +45,16 @@
 (declare update-schedule-pattern)
 (declare schedule-lazy-seq)
 
+#+cljs (def tz-offsets
+         {"EST" 5
+          "EDT" 4
+          "CST" 6
+          "CDT" 5
+          "MST" 7
+          "MDT" 6
+          "PST" 8
+          "PDT" 7})
+
 (defn calculate-next-schedule-instant
   [schedule]
   #+clj (let [pattern (.-pattern schedule)
@@ -69,13 +79,15 @@
                tz (.-tz pattern)
                start (.-start schedule)
                date (as-ts start)
-               candidate-date (js/Date. (.getUTCFullYear date)
-                                       (.getUTCMonth date)
-                                       (.getUTCDay date)
-                                       hour
-                                       0
-                                       0
-                                       0)]
+               candidate-date (js/Date. (.UTC js/Date
+                                              (.getUTCFullYear date)
+                                              (.getUTCMonth date)
+                                              (.getUTCDate date)
+                                              (+ hour (or (tz-offsets tz)
+                                                          0))
+                                              0
+                                              0
+                                              0))]
            (if (< (as-millis date) (as-millis candidate-date))
              (as-millis candidate-date)
              (do (.setDate candidate-date (inc (.getDate candidate-date)))

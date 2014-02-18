@@ -46,7 +46,26 @@
   (let [pattern (read-string "#schedule/pattern \"Every day at 9:00 PST\"")
         start #inst "2014-02-17T14:00:00.000-00:00"
         sched (anchor pattern start)
-        sample (take 10 sched)]
+        sample (take 5 sched)]
     (is (every? #(= #+clj java.util.Date
                     #+cljs js/Date
-                    (type %)) sample))))
+                    (type %)) sample))
+    (is (= sample
+           [#inst "2014-02-17T17:00:00.000-00:00"
+            #inst "2014-02-18T17:00:00.000-00:00"
+            #inst "2014-02-19T17:00:00.000-00:00"
+            #inst "2014-02-20T17:00:00.000-00:00"
+            #inst "2014-02-21T17:00:00.000-00:00"])))
+  (let [pattern (read-string "#schedule/pattern \"Every day at 9:00\"")
+        start #inst "2014-02-17T14:00:00.000-00:00"
+        sched (anchor pattern start)
+        sample (take 5 sched)]
+    (is (every? #(= #+clj java.util.Date
+                    #+cljs js/Date
+                    (type %)) sample))
+    (is (= sample
+           [#inst "2014-02-18T09:00:00.000-00:00"
+            #inst "2014-02-19T09:00:00.000-00:00"
+            #inst "2014-02-20T09:00:00.000-00:00"
+            #inst "2014-02-21T09:00:00.000-00:00"
+            #inst "2014-02-22T09:00:00.000-00:00"]))))
