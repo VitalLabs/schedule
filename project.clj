@@ -5,30 +5,31 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/clojurescript "0.0-2156"]]
-  :profiles {:dev {:dependencies [[com.cemerick/clojurescript.test "0.2.2"]]}}
+  :profiles {:dev {:dependencies [[com.cemerick/clojurescript.test "0.2.2"]]
+                   :cljsbuild {:builds [{:source-paths ["target/src" "target/test"]
+                                         :compiler {:output-to "target/js/schedule_test.js"
+                                                    :optimizations :whitespace
+                                                    :pretty-print true}}]
+                               :test-commands {"unit-tests" ["phantomjs" :runner "target/js/schedule_test.js"]}}}}
   :plugins [[com.keminglabs/cljx "0.3.2"]
             [lein-cljsbuild "1.0.2"]
             [com.cemerick/clojurescript.test "0.2.2"]]
-  :test-paths ["target/test/classes"]
-  :cljx {:builds [{:source-paths ["src/cljx"]
-                   :output-path "target/classes"
+  :source-paths ["src" "target/src"]
+  :test-paths ["test" "target/test"]
+  :cljx {:builds [{:source-paths ["cljx/src"]
+                   :output-path "target/src"
                    :rules :clj}
-                  {:source-paths ["test/cljx"]
-                   :output-path "target/test/classes"
+                  {:source-paths ["cljx/test"]
+                   :output-path "target/test"
                    :rules :clj}
-                  {:source-paths ["src/cljx"]
-                   :output-path "target/src/cljs"
+                  {:source-paths ["cljx/src"]
+                   :output-path "target/src"
                    :rules :cljs}
-                  {:source-paths ["test/cljx"]
-                   :output-path "target/src/test/cljs"
+                  {:source-paths ["cljx/test"]
+                   :output-path "target/test"
                    :rules :cljs}]}
-  :cljsbuild {:builds [{:source-paths ["target/src/cljs"]
-                        :compiler {:output-to "target/cljs/schedule.js"
+  :cljsbuild {:builds [{:source-paths ["target/src"]
+                        :compiler {:output-to "target/js/schedule.js"
                                    :optimizations :whitespace
-                                   :pretty-print true}}
-                       {:source-paths ["target/src/cljs" "target/src/test/cljs"]
-                        :compiler {:output-to "target/test/cljs/schedule_test.js"
-                                   :optimizations :whitespace
-                                   :pretty-print true}}]
-              :test-commands {"unit-tests" ["phantomjs" :runner "target/test/cljs/schedule_test.js"]}}
+                                   :pretty-print true}}]}
   :hooks [cljx.hooks leiningen.cljsbuild])
