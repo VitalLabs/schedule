@@ -1,4 +1,4 @@
-(defproject com.vitalreactor/schedule "0.1.0"
+(defproject com.vitalreactor/schedule "0.1.1"
   :description "An interchange format for describing schedules as immutable values in Clojure and ClojureScript"
   :url "http://github.com/vitalreactor/schedule"
   :license {:name "Eclipse Public License"
