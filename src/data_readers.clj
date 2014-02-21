@@ -1,2 +1,2 @@
-{schedule/pattern  schedule/read-floating-pattern
- schedule/schedule schedule/read-schedule}
+{schedule/weekly-pattern  schedule/read-floating-pattern
+ schedule/weekly-schedule schedule/read-schedule}

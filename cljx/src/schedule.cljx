@@ -9,9 +9,13 @@
   #+cljs (:require [cljs.reader :as reader]))
 
 (defprotocol Pattern
-  (anchor  [pattern t]    "Anchors the scheduling pattern at time `t`, yielding a schedule starting after `t`")
-  (at-hour [pattern hour] "Constrains pattern, returning a new pattern that generates instants at hour `hour`")
-  (in-tz   [pattern tz]   "Shifts pattern, returning a new pattern that occurs in timezoe `tz`."))
+  (anchor  [pattern t]    "Anchors the scheduling pattern at time `t`, yielding a schedule starting after `t`"))
+
+(defprotocol WeeklyTriggered
+  (at-hour [pattern hour] "Constrains pattern, returning a new pattern that generates instants at hour `hour`"))
+
+(defprotocol TimeZoneable
+  (in-tz [timezonable tz] "Shifts timezoneable, returning a new object projected in timezoe `tz`."))
 
 (defprotocol Instant
   (as-ts [instant] "Return a plaform native timestamp type corresponding to this instant.")
@@ -99,18 +103,20 @@
   #+clj (binding [*out* writer]
           (pr val)))
 
-(defn print-schedule-to-abstract-writer
+(defn print-weekly-schedule-to-abstract-writer
   [schedule writer write-fn opts]
   (let [pattern (.-pattern schedule)
         start (.-start schedule)]
-    (write-fn writer "#schedule/schedule ")
+    (write-fn writer "#schedule/weekly-schedule ")
     (print-to-writer {:pattern pattern
                       :start (as-ts start)} writer opts)))
 
-(deftype Schedule [pattern start]
+(deftype WeeklySchedule [pattern start]
   Pattern
-  (anchor  [this t]    (Schedule. pattern (as-millis t)))
+  (anchor  [this t]    (WeeklySchedule. pattern (as-millis t)))
+  WeeklyTriggered
   (at-hour [this hour] (update-schedule-pattern at-hour hour))
+  TimeZoneable
   (in-tz   [this tz]   (update-schedule-pattern in-tz tz))
   #+clj Seqable
   #+clj (seq [this] (schedule-lazy-seq this))
@@ -118,31 +124,31 @@
   #+cljs (-seq [this] (schedule-lazy-seq this))
   #+cljs IPrintWithWriter
   #+cljs (-pr-writer [schedule writer opts]
-           (print-schedule-to-abstract-writer schedule writer -write opts)))
+           (print-weekly-schedule-to-abstract-writer schedule writer -write opts)))
 
-#+clj (defmethod print-method Schedule
-        [^Schedule schedule ^Writer w]
-        (print-schedule-to-abstract-writer schedule w #(.write %1 %2) nil))
+#+clj (defmethod print-method WeeklySchedule
+        [^WeeklySchedule schedule ^Writer w]
+        (print-weekly-schedule-to-abstract-writer schedule w #(.write %1 %2) nil))
 
 (defn schedule-lazy-seq
   [sched]
   (let [next-instant-ms (calculate-next-schedule-instant sched)
         pattern (.-pattern sched)]
     (cons (as-ts next-instant-ms)
-          (lazy-seq (Schedule. pattern (inc next-instant-ms))))))
+          (lazy-seq (WeeklySchedule. pattern (inc next-instant-ms))))))
 
 (defn- update-schedule-pattern
   [schedule f & args]
   (let [pattern (.-pattern schedule)
         start (.-start pattern)]
-   (Schedule. (apply f pattern args) start)))
+   (WeeklySchedule. (apply f pattern args) start)))
 
 
-(defn- print-pattern-to-abstract-writer
+(defn- print-weekly-pattern-to-abstract-writer
   [pattern writer write-fn opts]
   (let [hour (.-hour pattern)
         tz (.-tz pattern)]
-    (write-fn writer "#schedule/pattern \"Every day")
+    (write-fn writer "#schedule/weekly-pattern \"Every day")
     (when hour
       (write-fn writer " at ")
       (write-fn writer (str hour))
@@ -152,28 +158,30 @@
       (write-fn writer tz))
     (write-fn writer "\"")))
 
-(deftype FloatingPattern [period hour tz]
+(deftype WeeklyPattern [period hour tz]
   Pattern
-  (anchor  [pattern t]    (Schedule. pattern (as-millis t)))
-  (at-hour [pattern new-hour] (FloatingPattern. period new-hour tz))
-  (in-tz   [pattern new-tz]   (FloatingPattern. period hour new-tz))
+  (anchor  [pattern t]    (WeeklySchedule. pattern (as-millis t)))
+  WeeklyTriggered
+  (at-hour [pattern new-hour] (WeeklyPattern. period new-hour tz))
+  TimeZoneable
+  (in-tz   [pattern new-tz]   (WeeklyPattern. period hour new-tz))
   #+clj IDeref
   #+clj (deref [pattern] (anchor pattern (current-time-millis)))
   #+cljs IDeref
   #+cljs (-deref [pattern] (anchor pattern (current-time-millis)))
   #+cljs IPrintWithWriter
   #+cljs (-pr-writer [pattern writer opts]
-           (print-pattern-to-abstract-writer pattern writer -write opts)))
+           (print-weekly-pattern-to-abstract-writer pattern writer -write opts)))
 
-#+clj (defmethod print-method FloatingPattern
-        [^FloatingPattern pattern ^Writer w]
-        (print-pattern-to-abstract-writer pattern w #(.write %1 %2) nil))
+#+clj (defmethod print-method WeeklyPattern
+        [^WeeklyPattern pattern ^Writer w]
+        (print-weekly-pattern-to-abstract-writer pattern w #(.write %1 %2) nil))
 
 (defn read-schedule
   [m]
   (let [pattern (:pattern m)
         start (:start m)]
-    (Schedule. pattern (as-millis start))))
+    (WeeklySchedule. pattern (as-millis start))))
 
 (defn- string->int
   [int]
@@ -183,7 +191,7 @@
 
 (defn- floating-pattern
   [period hour tz]
-  (FloatingPattern. period (string->int hour) tz))
+  (WeeklyPattern. period (string->int hour) tz))
 
 (defn- match-globs
   [re s]
@@ -203,5 +211,5 @@
                              :hour hour
                              :tz tz})))))
 
-#+cljs (reader/register-tag-parser! "schedule/pattern" read-floating-pattern)
-#+cljs (reader/register-tag-parser! "schedule/schedule" read-schedule)
+#+cljs (reader/register-tag-parser! "schedule/weekly-pattern" read-floating-pattern)
+#+cljs (reader/register-tag-parser! "schedule/weekly-schedule" read-schedule)
