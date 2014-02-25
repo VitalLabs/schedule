@@ -1,4 +1,5 @@
 (ns schedule
+  #+clj (:require [clojure.string :as str])
   #+clj (:import clojure.lang.IDeref
                  clojure.lang.Seqable
                  clojure.lang.Cons
@@ -6,13 +7,19 @@
                  java.util.Calendar
                  java.util.TimeZone
                  java.io.Writer)
-  #+cljs (:require [cljs.reader :as reader]))
+  #+cljs (:require [cljs.reader :as reader]
+                   [clojure.string :as str]))
 
 (defprotocol Pattern
   (anchor  [pattern t]    "Anchors the scheduling pattern at time `t`, yielding a schedule starting after `t`"))
 
 (defprotocol WeeklyTriggered
-  (at-hour [pattern hour] "Constrains pattern, returning a new pattern that generates instants at hour `hour`"))
+  (at-hour [pattern hour] "Return a new pattern that only generates instants at hour `hour`")
+  (add-hour [pattern hour] "Returns a new pattern that generates instants at hour `hour`")
+  (remove-hour [pattern hour] "Returns a new pattern that will not generate instants at hour `hour`")
+  (at-time [pattern hour minute] "Return a new pattern that only generates instants at the time indicated by `hour` and `minute`")
+  (add-time [pattern hour minute] "Returns a new pattern that generates instants at the time indicated by `hour` and `minute")
+  (remove-time [pattern hour minute] "Returns a new pattern that will not generate instants at the time indicated by `hour` and `minute`"))
 
 (defprotocol TimeZoneable
   (in-tz [timezonable tz] "Shifts timezoneable, returning a new object projected in timezoe `tz`."))
@@ -59,43 +66,64 @@
           "PST" 8
           "PDT" 7})
 
+(defn roll-to
+  "Rolls ms forward, finding the next time ms which occurs on day at
+  hour and minute in tz"
+  [ms day hour minute tz]
+  #+clj (let [weekday-map {:monday Calendar/MONDAY
+                           :tuesday Calendar/TUESDAY
+                           :wednesday Calendar/WEDNESDAY
+                           :thursday Calendar/THURSDAY
+                           :friday Calendar/FRIDAY
+                           :saturday Calendar/SATURDAY
+                           :sunday Calendar/SUNDAY}
+              cal (Calendar/getInstance)]
+          (.setTimeInMillis cal ms)
+          (.set cal Calendar/DAY_OF_WEEK (weekday-map day))
+          (.set cal Calendar/HOUR_OF_DAY hour)
+          (.set cal Calendar/MINUTE minute)
+          (.set cal Calendar/SECOND 0)
+          (.set cal Calendar/MILLISECOND 0)
+          (.setTimeZone cal (TimeZone/getTimeZone (or tz "UTC")))
+          (if (<= ms (.getTimeInMillis cal))
+            (.getTimeInMillis cal)
+            (do (.add cal Calendar/DAY_OF_YEAR 7)
+                (.getTimeInMillis cal))))
+  #+cljs (let [weekday-map {:monday 1
+                            :tuesday 2
+                            :wednesday 3
+                            :thursday 4
+                            :friday 5
+                            :saturday 6
+                            :sunday 0}
+               date (as-ts ms)
+               new-date (js/Date. (.UTC js/Date
+                                        (.getUTCFullYear date)
+                                        (.getUTCMonth date)
+                                        (.getUTCDate date)
+                                        (+ hour (or (tz-offsets tz)
+                                                    0))
+                                        minute
+                                        0
+                                        0))
+               distance (- (weekday-map day) (.getDay date))]
+           (.setDate new-date (+ (.getDate new-date) distance))
+           (if (<= ms (as-millis new-date))
+             (as-millis new-date)
+             (do (.setDate new-date (+ (.getDate new-date) 7))
+                 (as-millis new-date)))))
+
 (defn- calculate-next-schedule-instant
   [schedule]
-  #+clj (let [pattern (.-pattern schedule)
-              hour (.-hour pattern)
-              tz (.-tz pattern)
-              start (.-start schedule)
-              cal (Calendar/getInstance)
-              candidate-cal (Calendar/getInstance)]
-          (.setTimeInMillis cal start)
-          (.setTimeInMillis candidate-cal start)
-          (.set candidate-cal Calendar/HOUR_OF_DAY hour)
-          (.set candidate-cal Calendar/MINUTE 0)
-          (.set candidate-cal Calendar/SECOND 0)
-          (.set candidate-cal Calendar/MILLISECOND 0)
-          (.setTimeZone candidate-cal (TimeZone/getTimeZone (or tz "UTC")))
-          (if (< (.compareTo cal candidate-cal) 0)
-            (.getTimeInMillis candidate-cal)
-            (do (.add candidate-cal Calendar/DAY_OF_YEAR 1)
-                (.getTimeInMillis candidate-cal))))
-  #+cljs (let [pattern (.-pattern schedule)
-               hour (.-hour pattern)
-               tz (.-tz pattern)
-               start (.-start schedule)
-               date (as-ts start)
-               candidate-date (js/Date. (.UTC js/Date
-                                              (.getUTCFullYear date)
-                                              (.getUTCMonth date)
-                                              (.getUTCDate date)
-                                              (+ hour (or (tz-offsets tz)
-                                                          0))
-                                              0
-                                              0
-                                              0))]
-           (if (< (as-millis date) (as-millis candidate-date))
-             (as-millis candidate-date)
-             (do (.setDate candidate-date (inc (.getDate candidate-date)))
-                 (as-millis candidate-date)))))
+  (let [pattern (.-pattern schedule)
+        time-matches (.-time-matches pattern)
+        tz (.-tz pattern)
+        start (.-start schedule)
+        days (or (.-days pattern)
+                 [:monday :tuesday :wednesday :thursday :friday :saturday :sunday])
+        candidates (for [day days [hour min] time-matches]
+                     (roll-to start day hour min tz))]
+    (apply min candidates)))
 
 (defn print-to-writer
   [val writer opts]
@@ -116,6 +144,11 @@
   (anchor  [this t]    (WeeklySchedule. pattern (as-millis t)))
   WeeklyTriggered
   (at-hour [this hour] (update-schedule-pattern at-hour hour))
+  (add-hour [this hour] (update-schedule-pattern add-hour hour))
+  (remove-hour [this hour] (update-schedule-pattern remove-hour hour))
+  (at-time [this hour minute] (update-schedule-pattern at-time hour minute))
+  (add-time [this hour minute] (update-schedule-pattern add-time hour minute))
+  (remove-time [this hour minute] (update-schedule-pattern remove-time hour minute))
   TimeZoneable
   (in-tz   [this tz]   (update-schedule-pattern in-tz tz))
   #+clj Seqable
@@ -134,6 +167,9 @@
   [sched]
   (let [next-instant-ms (calculate-next-schedule-instant sched)
         pattern (.-pattern sched)]
+    (when (nil? next-instant-ms)
+      (throw (ex-info (str "Nil next instant ms. " (pr-str (.-pattern sched)) " " (.-start sched))
+                      {:sched sched})))
     (cons (as-ts next-instant-ms)
           (lazy-seq (WeeklySchedule. pattern (inc next-instant-ms))))))
 
@@ -144,27 +180,49 @@
    (WeeklySchedule. (apply f pattern args) start)))
 
 
+(defn- write-n
+  [coll writer write-fn serial-fn empty-fn]
+  (case (count coll)
+    0 (write-fn writer (empty-fn))
+    1 (write-fn writer (serial-fn (first coll)))
+    2 (do (write-fn writer (serial-fn (first coll)))
+          (write-fn writer ", and ")
+          (write-fn writer (serial-fn (second coll))))
+    (do (doseq [item (butlast coll)]
+          (write-fn writer (serial-fn item))
+          (write-fn writer ", "))
+        (write-fn writer "and ")
+        (write-fn writer (serial-fn (last coll))))))
+
 (defn- print-weekly-pattern-to-abstract-writer
   [pattern writer write-fn opts]
-  (let [hour (.-hour pattern)
+  (let [days (.-days pattern)
+        time-matches (.-time-matches pattern)
         tz (.-tz pattern)]
-    (write-fn writer "#schedule/weekly-pattern \"Every day")
-    (when hour
-      (write-fn writer " at ")
-      (write-fn writer (str hour))
-      (write-fn writer ":00"))
+    (write-fn writer "#schedule/weekly-pattern \"")
+    (write-n days writer write-fn #(str/capitalize (name %)) (constantly "Every day"))
+    (when time-matches
+      (write-fn writer " at "))
+    (write-n (sort time-matches) writer write-fn #(let [[hour minute] %]
+                                                    (str hour ":" (when (< minute 10) "0") minute))
+             (constantly ""))
     (when tz
       (write-fn writer " ")
       (write-fn writer tz))
     (write-fn writer "\"")))
 
-(deftype WeeklyPattern [period hour tz]
+(deftype WeeklyPattern [days time-matches tz]
   Pattern
   (anchor  [pattern t]    (WeeklySchedule. pattern (as-millis t)))
   WeeklyTriggered
-  (at-hour [pattern new-hour] (WeeklyPattern. period new-hour tz))
+  (at-hour [pattern new-hour] (WeeklyPattern. days #{[new-hour 0]} tz))
+  (add-hour [pattern new-hour] (WeeklyPattern. days (conj time-matches [new-hour 0]) tz))
+  (remove-hour [pattern del-hour] (WeeklyPattern. days (disj time-matches [del-hour 0]) tz))
+  (at-time [pattern new-hour new-minute] (WeeklyPattern. days #{[new-hour new-minute]} tz))
+  (add-time [pattern new-hour new-minute] (WeeklyPattern. days (conj time-matches [new-hour new-minute]) tz))
+  (remove-time [pattern del-hour del-minute] (WeeklyPattern. days (disj time-matches [del-hour del-minute]) tz))
   TimeZoneable
-  (in-tz   [pattern new-tz]   (WeeklyPattern. period hour new-tz))
+  (in-tz   [pattern new-tz]   (WeeklyPattern. days time-matches new-tz))
   #+clj IDeref
   #+clj (deref [pattern] (anchor pattern (current-time-millis)))
   #+cljs IDeref
@@ -190,8 +248,8 @@
     #+cljs (js/parseInt int 10)))
 
 (defn- floating-pattern
-  [period hour tz]
-  (WeeklyPattern. period (string->int hour) tz))
+  [days time-matches tz]
+  (WeeklyPattern. days time-matches tz))
 
 (defn- match-globs
   [re s]
@@ -199,17 +257,42 @@
           (re-find matcher))
   #+cljs (re-matches re s))
 
+(defn pull-days
+  ([s]
+     (pull-days s nil))
+  ([s days]
+     (let [day-re #"((?:, )?(?:and )?((?:Every |Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day)).*"
+           [match root first-day] (match-globs day-re s)]
+       (if (or (= first-day "Every day")
+               (nil? first-day))
+         {:days days
+          :days-rest (.substring s (count root))}
+         (recur (.substring s (count root))
+                (conj days (keyword (.toLowerCase first-day))))))))
+
+(defn pull-times
+  ([s]
+     (let [[match times-etc] (match-globs #" at (.*)" s)]
+       (if times-etc
+         (pull-times times-etc #{})
+         {:times nil
+          :times-rest s})))
+  ([s times]
+     (let [time-re #"((?:, )?(?:and )?(\d{1,2}):(\d{2})).*"
+           [match root hour-str minute-str] (match-globs time-re s)]
+       (if-not (and hour-str minute-str)
+         {:times times
+          :times-rest (.substring s (count root))}
+         (recur (.substring s (count root))
+                (conj times [(string->int hour-str) (string->int minute-str)]))))))
+
 (defn read-floating-pattern
         [s]
-        (let [re #"Every day(?: at (\d+):00)?(?: (.+))?"
-              [match hour tz] (match-globs re s)]
-          (if match
-            (floating-pattern nil hour tz)
-            (throw (ex-info (str "Could not read floating pattern: \"" s \")
-                            {:s s
-                             :match match
-                             :hour hour
-                             :tz tz})))))
+        (let [{:keys [days days-rest]} (pull-days s)
+              {:keys [times times-rest]} (pull-times days-rest)
+              tz-re #"(?: (.+))?"
+              [match tz] (match-globs tz-re times-rest)]
+          (floating-pattern days times tz)))
 
 #+cljs (reader/register-tag-parser! "schedule/weekly-pattern" read-floating-pattern)
 #+cljs (reader/register-tag-parser! "schedule/weekly-schedule" read-schedule)
