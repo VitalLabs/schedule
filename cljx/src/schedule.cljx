@@ -3,6 +3,7 @@
   #+clj (:import clojure.lang.IDeref
                  clojure.lang.Seqable
                  clojure.lang.Cons
+                 clojure.lang.ILookup
                  java.util.Date
                  java.util.Calendar
                  java.util.TimeZone
@@ -114,12 +115,10 @@
                  (as-millis new-date)))))
 
 (defn- calculate-next-schedule-instant
-  [schedule]
-  (let [pattern (.-pattern schedule)
-        time-matches (.-time-matches pattern)
-        tz (.-tz pattern)
-        start (.-start schedule)
-        days (or (.-days pattern)
+  [{{:keys [tz time-matches days] :as pattern} :pattern
+    start :start
+    :as schedule}]
+  (let [days (or days
                  [:monday :tuesday :wednesday :thursday :friday :saturday :sunday])
         candidates (for [day days [hour min] time-matches]
                      (roll-to start day hour min tz))]
@@ -132,12 +131,21 @@
           (pr val)))
 
 (defn print-weekly-schedule-to-abstract-writer
-  [schedule writer write-fn opts]
-  (let [pattern (.-pattern schedule)
-        start (.-start schedule)]
-    (write-fn writer "#schedule/weekly-schedule ")
-    (print-to-writer {:pattern pattern
-                      :start (as-ts start)} writer opts)))
+  [{:keys [pattern start] :as schedule} writer write-fn opts]
+  (write-fn writer "#schedule/weekly-schedule ")
+  (print-to-writer {:pattern pattern
+                    :start (as-ts start)} writer opts))
+
+(defn- lookup-schedule-key
+  ([schedule key] (lookup-schedule-key schedule key nil))
+  ([schedule key not-found]
+     (let [lookup (condp get key
+                    #{:pattern 'pattern} (.-pattern schedule)
+                    #{:start 'start} (.-start schedule)
+                    ::not-found)]
+       (if (= lookup ::not-found)
+         not-found
+         lookup))))
 
 (deftype WeeklySchedule [pattern start]
   Pattern
@@ -151,6 +159,12 @@
   (remove-time [this hour minute] (update-schedule-pattern remove-time hour minute))
   TimeZoneable
   (in-tz   [this tz]   (update-schedule-pattern in-tz tz))
+  #+clj ILookup
+  #+clj (valAt [this key] (lookup-schedule-key this key))
+  #+clj (valAt [this key not-found] (lookup-schedule-key this key not-found))
+  #+cljs ILookup
+  #+cljs (-lookup [this key] (lookup-schedule-key this key))
+  #+cljs (-lookup [this key not-found] (lookup-schedule-key this key not-found))
   #+clj Seqable
   #+clj (seq [this] (schedule-lazy-seq this))
   #+cljs ISeqable
@@ -164,21 +178,14 @@
         (print-weekly-schedule-to-abstract-writer schedule w #(.write %1 %2) nil))
 
 (defn schedule-lazy-seq
-  [sched]
-  (let [next-instant-ms (calculate-next-schedule-instant sched)
-        pattern (.-pattern sched)]
-    (when (nil? next-instant-ms)
-      (throw (ex-info (str "Nil next instant ms. " (pr-str (.-pattern sched)) " " (.-start sched))
-                      {:sched sched})))
+  [{:keys [pattern] :as schedule}]
+  (let [next-instant-ms (calculate-next-schedule-instant schedule)]
     (cons (as-ts next-instant-ms)
           (lazy-seq (WeeklySchedule. pattern (inc next-instant-ms))))))
 
 (defn- update-schedule-pattern
-  [schedule f & args]
-  (let [pattern (.-pattern schedule)
-        start (.-start pattern)]
-   (WeeklySchedule. (apply f pattern args) start)))
-
+  [{:keys [pattern start]} f & args]
+  (WeeklySchedule. (apply f pattern args) start))
 
 (defn- write-n
   [coll writer write-fn serial-fn empty-fn]
@@ -195,21 +202,30 @@
         (write-fn writer (serial-fn (last coll))))))
 
 (defn- print-weekly-pattern-to-abstract-writer
-  [pattern writer write-fn opts]
-  (let [days (.-days pattern)
-        time-matches (.-time-matches pattern)
-        tz (.-tz pattern)]
-    (write-fn writer "#schedule/weekly-pattern \"")
-    (write-n days writer write-fn #(str/capitalize (name %)) (constantly "Every day"))
-    (when time-matches
-      (write-fn writer " at "))
-    (write-n (sort time-matches) writer write-fn #(let [[hour minute] %]
-                                                    (str hour ":" (when (< minute 10) "0") minute))
-             (constantly ""))
-    (when tz
-      (write-fn writer " ")
-      (write-fn writer tz))
-    (write-fn writer "\"")))
+  [{:keys [days time-matches tz] :as pattern} writer write-fn opts]
+  (write-fn writer "#schedule/weekly-pattern \"")
+  (write-n days writer write-fn #(str/capitalize (name %)) (constantly "Every day"))
+  (when time-matches
+    (write-fn writer " at "))
+  (write-n (sort time-matches) writer write-fn #(let [[hour minute] %]
+                                                  (str hour ":" (when (< minute 10) "0") minute))
+           (constantly ""))
+  (when tz
+    (write-fn writer " ")
+    (write-fn writer tz))
+  (write-fn writer "\""))
+
+(defn- lookup-pattern-key
+  ([pattern key] (lookup-pattern-key pattern key nil))
+  ([pattern key not-found]
+     (let [lookup (condp get key
+                    #{:days 'days} (.-days pattern)
+                    #{:time-matches 'time-matches} (.-time-matches pattern)
+                    #{:tz 'tz} (.-tz pattern)
+                    ::not-found)]
+       (if (= lookup ::not-found)
+         not-found
+         lookup))))
 
 (deftype WeeklyPattern [days time-matches tz]
   Pattern
@@ -223,6 +239,12 @@
   (remove-time [pattern del-hour del-minute] (WeeklyPattern. days (disj time-matches [del-hour del-minute]) tz))
   TimeZoneable
   (in-tz   [pattern new-tz]   (WeeklyPattern. days time-matches new-tz))
+  #+clj ILookup
+  #+clj (valAt [this key] (lookup-pattern-key this key))
+  #+clj (valAt [this key not-found] (lookup-pattern-key this key not-found))
+  #+cljs ILookup
+  #+cljs (-lookup [this key] (lookup-pattern-key this key))
+  #+cljs (-lookup [this key not-found] (lookup-pattern-key this key not-found))
   #+clj IDeref
   #+clj (deref [pattern] (anchor pattern (current-time-millis)))
   #+cljs IDeref
