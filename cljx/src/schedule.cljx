@@ -147,6 +147,8 @@
          not-found
          lookup))))
 
+(declare schedules-equiv?)
+
 (deftype WeeklySchedule [pattern start]
   Pattern
   (anchor  [this t]    (WeeklySchedule. pattern (as-millis t)))
@@ -159,6 +161,10 @@
   (remove-time [this hour minute] (update-schedule-pattern remove-time hour minute))
   TimeZoneable
   (in-tz   [this tz]   (update-schedule-pattern in-tz tz))
+  #+clj Object
+  #+clj (equals [this schedule] (schedules-equiv? this schedule))
+  #+cljs IEquiv
+  #+cljs (-equiv [this schedule] (schedules-equiv? this schedule))
   #+clj ILookup
   #+clj (valAt [this key] (lookup-schedule-key this key))
   #+clj (valAt [this key not-found] (lookup-schedule-key this key not-found))
@@ -172,6 +178,13 @@
   #+cljs IPrintWithWriter
   #+cljs (-pr-writer [schedule writer opts]
            (print-weekly-schedule-to-abstract-writer schedule writer -write opts)))
+
+(defn schedules-equiv?
+  [schedule1 schedule2]
+  (and (instance? WeeklySchedule schedule1)
+       (instance? WeeklySchedule schedule2)
+       (= (:pattern schedule1) (:pattern schedule2))
+       (= (:start schedule1) (:start schedule2))))
 
 #+clj (defmethod print-method WeeklySchedule
         [^WeeklySchedule schedule ^Writer w]
@@ -227,6 +240,8 @@
          not-found
          lookup))))
 
+(declare patterns-equiv?)
+
 (deftype WeeklyPattern [days time-matches tz]
   Pattern
   (anchor  [pattern t]    (WeeklySchedule. pattern (as-millis t)))
@@ -239,6 +254,10 @@
   (remove-time [pattern del-hour del-minute] (WeeklyPattern. days (disj time-matches [del-hour del-minute]) tz))
   TimeZoneable
   (in-tz   [pattern new-tz]   (WeeklyPattern. days time-matches new-tz))
+  #+clj Object
+  #+clj (equals [this pattern] (patterns-equiv? this pattern))
+  #+cljs IEquiv
+  #+cljs (-equiv [this pattern] (patterns-equiv? this pattern))
   #+clj ILookup
   #+clj (valAt [this key] (lookup-pattern-key this key))
   #+clj (valAt [this key not-found] (lookup-pattern-key this key not-found))
@@ -252,6 +271,14 @@
   #+cljs IPrintWithWriter
   #+cljs (-pr-writer [pattern writer opts]
            (print-weekly-pattern-to-abstract-writer pattern writer -write opts)))
+
+(defn patterns-equiv?
+  [pattern1 pattern2]
+  (and (instance? WeeklyPattern pattern1)
+       (instance? WeeklyPattern pattern2)
+       (= (:days pattern1) (:days pattern2))
+       (= (:time-matches pattern1) (:time-matches pattern2))
+       (= (:tz pattern1) (:tz pattern2))))
 
 #+clj (defmethod print-method WeeklyPattern
         [^WeeklyPattern pattern ^Writer w]

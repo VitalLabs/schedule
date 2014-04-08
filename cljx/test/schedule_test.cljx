@@ -36,6 +36,14 @@
        (WeeklyPattern. nil #{[9 5]} "PST") "#schedule/weekly-pattern \"Every day at 9:05 PST\""
        (WeeklyPattern. [:monday :wednesday :friday] #{[9 0] [15 0]} "PST") "#schedule/weekly-pattern \"Monday, Wednesday, and Friday at 9:00, and 15:00 PST\""))
 
+(deftest test-pattern-equality
+  (are [x] (= (x) (x))
+       #(WeeklyPattern. nil nil nil)
+       #(WeeklyPattern. nil #{[9 0]} nil)
+       #(WeeklyPattern. nil nil "PST")
+       #(WeeklyPattern. nil #{[9 0]} "PST")
+       #(WeeklyPattern. [:monday :wednesday :friday] #{[9 0] [15 0]} "PST")))
+
 (deftest test-schedule-reading
   (are [x y] (= (let [{{:keys [time-matches tz] :as pattern} :pattern
                        start :start
@@ -62,6 +70,13 @@
         roughly (fn [tolerance x y]
                   (< (Math/abs (- x y)) tolerance))]
     (is (roughly 50 (:start @pattern) (s/current-time-millis)))))
+
+(deftest test-schedule-equality
+  (are [x] (= (x) (x))
+       #(WeeklySchedule. (WeeklyPattern. nil nil nil)
+                         #inst "2014-02-17T14:00:00.000-00:00")
+       #(WeeklySchedule. (WeeklyPattern. [:monday :wednesday :friday] #{[9 0] [15 0]} "PST")
+                         #inst "2014-02-17T14:00:00.000-00:00")))
 
 (deftest test-schedule-seq
   (let [pattern (read-string "#schedule/weekly-pattern \"Every day at 9:00 PST\"")
