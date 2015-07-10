@@ -157,3 +157,7 @@
             #inst "2014-02-26T09:00:00.000-00:00"
             #inst "2014-03-03T09:00:00.000-00:00"
             #inst "2014-03-05T09:00:00.000-00:00"]))))
+
+(deftest test-everyday-list
+  (is (= (:days (read-string "#schedule/weekly-pattern \"Every day at 10:05\""))
+         (s/every-day))))

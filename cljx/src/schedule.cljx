@@ -306,16 +306,21 @@
           (re-find matcher))
   #+cljs (re-matches re s))
 
+(def every-day [:monday :tuesday :wednesday :thursday :friday :saturday :sunday])
+
 (defn pull-days
   ([s]
      (pull-days s nil))
   ([s days]
      (let [day-re #"((?:, )?(?:and )?((?:Every |Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day)).*"
            [match root first-day] (match-globs day-re s)]
-       (if (or (= first-day "Every day")
-               (nil? first-day))
+       (cond (nil? first-day)
          {:days days
           :days-rest (.substring s (count root))}
+         (= first-day "Every day")
+         {:days every-day
+          :days-rest (.substring s (count root))}
+         :else
          (recur (.substring s (count root))
                 (conj days (keyword (.toLowerCase first-day))))))))
 
