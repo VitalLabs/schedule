@@ -139,13 +139,13 @@
 (defn- lookup-schedule-key
   ([schedule key] (lookup-schedule-key schedule key nil))
   ([schedule key not-found]
-     (let [lookup (condp get key
-                    #{:pattern 'pattern} (.-pattern schedule)
-                    #{:start 'start} (.-start schedule)
-                    ::not-found)]
-       (if (= lookup ::not-found)
-         not-found
-         lookup))))
+   (let [lookup (condp get key
+                  #{:pattern 'pattern} (.-pattern schedule)
+                  #{:start 'start} (.-start schedule)
+                  ::not-found)]
+     (if (= lookup ::not-found)
+       not-found
+       lookup))))
 
 (declare schedules-equiv?)
 
@@ -208,6 +208,7 @@
     2 (do (write-fn writer (serial-fn (first coll)))
           (write-fn writer ", and ")
           (write-fn writer (serial-fn (second coll))))
+    7 (write-fn writer (empty-fn))
     (do (doseq [item (butlast coll)]
           (write-fn writer (serial-fn item))
           (write-fn writer ", "))
@@ -231,14 +232,14 @@
 (defn- lookup-pattern-key
   ([pattern key] (lookup-pattern-key pattern key nil))
   ([pattern key not-found]
-     (let [lookup (condp get key
-                    #{:days 'days} (.-days pattern)
-                    #{:time-matches 'time-matches} (.-time-matches pattern)
-                    #{:tz 'tz} (.-tz pattern)
-                    ::not-found)]
-       (if (= lookup ::not-found)
-         not-found
-         lookup))))
+   (let [lookup (condp get key
+                  #{:days 'days} (.-days pattern)
+                  #{:time-matches 'time-matches} (.-time-matches pattern)
+                  #{:tz 'tz} (.-tz pattern)
+                  ::not-found)]
+     (if (= lookup ::not-found)
+       not-found
+       lookup))))
 
 (declare patterns-equiv?)
 
@@ -310,43 +311,43 @@
 
 (defn pull-days
   ([s]
-     (pull-days s nil))
+   (pull-days s nil))
   ([s days]
-     (let [day-re #"((?:, )?(?:and )?((?:Every |Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day)).*"
-           [match root first-day] (match-globs day-re s)]
-       (cond (nil? first-day)
-         {:days days
-          :days-rest (.substring s (count root))}
-         (= first-day "Every day")
-         {:days every-day
-          :days-rest (.substring s (count root))}
-         :else
-         (recur (.substring s (count root))
-                (conj days (keyword (.toLowerCase first-day))))))))
+   (let [day-re #"((?:, )?(?:and )?((?:Every |Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day)).*"
+         [match root first-day] (match-globs day-re s)]
+     (cond (nil? first-day)
+           {:days (reverse days)
+            :days-rest (.substring s (count root))}
+           (= first-day "Every day")
+           {:days every-day
+            :days-rest (.substring s (count root))}
+           :else
+           (recur (.substring s (count root))
+                  (conj days (keyword (.toLowerCase first-day))))))))
 
 (defn pull-times
   ([s]
-     (let [[match times-etc] (match-globs #" at (.*)" s)]
-       (if times-etc
-         (pull-times times-etc #{})
-         {:times nil
-          :times-rest s})))
+   (let [[match times-etc] (match-globs #" at (.*)" s)]
+     (if times-etc
+       (pull-times times-etc #{})
+       {:times nil
+        :times-rest s})))
   ([s times]
-     (let [time-re #"((?:, )?(?:and )?(\d{1,2}):(\d{2})).*"
-           [match root hour-str minute-str] (match-globs time-re s)]
-       (if-not (and hour-str minute-str)
-         {:times times
-          :times-rest (.substring s (count root))}
-         (recur (.substring s (count root))
-                (conj times [(string->int hour-str) (string->int minute-str)]))))))
+   (let [time-re #"((?:, )?(?:and )?(\d{1,2}):(\d{2})).*"
+         [match root hour-str minute-str] (match-globs time-re s)]
+     (if-not (and hour-str minute-str)
+       {:times times
+        :times-rest (.substring s (count root))}
+       (recur (.substring s (count root))
+              (conj times [(string->int hour-str) (string->int minute-str)]))))))
 
 (defn read-floating-pattern
-        [s]
-        (let [{:keys [days days-rest]} (pull-days s)
-              {:keys [times times-rest]} (pull-times days-rest)
-              tz-re #"(?: (.+))?"
-              [match tz] (match-globs tz-re times-rest)]
-          (floating-pattern days times tz)))
+  [s]
+  (let [{:keys [days days-rest]} (pull-days s)
+        {:keys [times times-rest]} (pull-times days-rest)
+        tz-re #"(?: (.+))?"
+        [match tz] (match-globs tz-re times-rest)]
+    (floating-pattern days times tz)))
 
 #+cljs (reader/register-tag-parser! "schedule/weekly-pattern" read-floating-pattern)
 #+cljs (reader/register-tag-parser! "schedule/weekly-schedule" read-schedule)

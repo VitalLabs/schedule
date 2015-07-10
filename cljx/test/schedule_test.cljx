@@ -19,12 +19,12 @@
     (are [x y] (= (let [{:keys [days time-matches tz]} (read-string x)]
                     [(set days) time-matches tz])
                   y)
-         "#schedule/weekly-pattern \"Every day\"" [#{} nil nil]
-         "#schedule/weekly-pattern \"Every day at 9:00\"" [#{} #{[9 0]} nil]
-         "#schedule/weekly-pattern \"Every day at 9:05\"" [#{} #{[9 5]} nil]
-         "#schedule/weekly-pattern \"Every day at 9:05, and 4:15\"" [#{} #{[9 5] [4 15]} nil]
-         "#schedule/weekly-pattern \"Every day PST\"" [#{} nil "PST"]
-         "#schedule/weekly-pattern \"Every day at 9:00 PST\"" [#{} #{[9 0]} "PST"]
+         "#schedule/weekly-pattern \"Every day\"" [#{:monday :tuesday :wednesday :thursday :friday :saturday :sunday} nil nil]
+         "#schedule/weekly-pattern \"Every day at 9:00\"" [#{:monday :tuesday :wednesday :thursday :friday :saturday :sunday} #{[9 0]} nil]
+         "#schedule/weekly-pattern \"Every day at 9:05\"" [#{:monday :tuesday :wednesday :thursday :friday :saturday :sunday} #{[9 5]} nil]
+         "#schedule/weekly-pattern \"Every day at 9:05, and 4:15\"" [#{:monday :tuesday :wednesday :thursday :friday :saturday :sunday} #{[9 5] [4 15]} nil]
+         "#schedule/weekly-pattern \"Every day PST\"" [#{:monday :tuesday :wednesday :thursday :friday :saturday :sunday} nil "PST"]
+         "#schedule/weekly-pattern \"Every day at 9:00 PST\"" [#{:monday :tuesday :wednesday :thursday :friday :saturday :sunday} #{[9 0]} "PST"]
          "#schedule/weekly-pattern \"Monday, Wednesday, and Friday at 9:00, and 15:00\"" [#{:monday :wednesday :friday} #{[9 0] [15 0]} nil])))
 
 (deftest test-pattern-printing
@@ -160,4 +160,4 @@
 
 (deftest test-everyday-list
   (is (= (:days (read-string "#schedule/weekly-pattern \"Every day at 10:05\""))
-         (s/every-day))))
+         s/every-day)))
