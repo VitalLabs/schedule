@@ -1,9 +1,9 @@
-(defproject com.vitalreactor/schedule "0.1.5"
+(defproject com.vitalreactor/schedule "0.1.6"
   :description "An interchange format for describing schedules as immutable values in Clojure and ClojureScript"
   :url "http://github.com/vitalreactor/schedule"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.5.1"]
+  :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/clojurescript "0.0-2156"]]
   :profiles {:dev {:dependencies [[com.cemerick/clojurescript.test "0.2.2"]]
                    :cljsbuild {:builds [{:source-paths ["target/src" "target/test"]

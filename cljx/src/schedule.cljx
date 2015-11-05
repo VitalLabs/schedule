@@ -153,14 +153,14 @@
   Pattern
   (anchor  [this t]    (WeeklySchedule. pattern (as-millis t)))
   WeeklyTriggered
-  (at-hour [this hour] (update-schedule-pattern at-hour hour))
-  (add-hour [this hour] (update-schedule-pattern add-hour hour))
-  (remove-hour [this hour] (update-schedule-pattern remove-hour hour))
-  (at-time [this hour minute] (update-schedule-pattern at-time hour minute))
-  (add-time [this hour minute] (update-schedule-pattern add-time hour minute))
-  (remove-time [this hour minute] (update-schedule-pattern remove-time hour minute))
+  (at-hour [this hour] (update-schedule-pattern this at-hour hour))
+  (add-hour [this hour] (update-schedule-pattern this add-hour hour))
+  (remove-hour [this hour] (update-schedule-pattern this remove-hour hour))
+  (at-time [this hour minute] (update-schedule-pattern this at-time hour minute))
+  (add-time [this hour minute] (update-schedule-pattern this add-time hour minute))
+  (remove-time [this hour minute] (update-schedule-pattern this remove-time hour minute))
   TimeZoneable
-  (in-tz   [this tz]   (update-schedule-pattern in-tz tz))
+  (in-tz   [this tz]   (update-schedule-pattern this in-tz tz))
   #+clj Object
   #+clj (equals [this schedule] (schedules-equiv? this schedule))
   #+cljs IEquiv
@@ -198,6 +198,7 @@
 
 (defn- update-schedule-pattern
   [{:keys [pattern start]} f & args]
+  (println [f pattern args start])
   (WeeklySchedule. (apply f pattern args) start))
 
 (defn- write-n
