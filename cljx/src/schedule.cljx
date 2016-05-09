@@ -22,6 +22,17 @@
   (add-time [pattern hour minute] "Returns a new pattern that generates instants at the time indicated by `hour` and `minute")
   (remove-time [pattern hour minute] "Returns a new pattern that will not generate instants at the time indicated by `hour` and `minute`"))
 
+(defprotocol MonthlyTriggered
+  (at-day [pattern day] "Return a new pattern that only generates instants at day of the month `day`")
+  (add-day [pattern day] "Returns a new pattern that generates instants at day of the month `day`")
+  (remove-day [pattern day] "Returns a new pattern that will not generate instants at day of the month `day`")
+  (at-hour [pattern hour] "Return a new pattern that only generates instants at hour `hour`")
+  (add-hour [pattern hour] "Returns a new pattern that generates instants at hour `hour`")
+  (remove-hour [pattern hour] "Returns a new pattern that will not generate instants at hour `hour`")
+  (at-time [pattern hour minute] "Return a new pattern that only generates instants at the time indicated by `hour` and `minute`")
+  (add-time [pattern hour minute] "Returns a new pattern that generates instants at the time indicated by `hour` and `minute")
+  (remove-time [pattern hour minute] "Returns a new pattern that will not generate instants at the time indicated by `hour` and `minute`"))
+
 (defprotocol TimeZoneable
   (in-tz [timezonable tz] "Shifts timezoneable, returning a new object projected in timezoe `tz`."))
 
@@ -55,6 +66,7 @@
          (as-millis [num] num))
 
 (declare ^:private update-schedule-pattern)
+(declare ^:private update-monthly-schedule-pattern)
 (declare schedule-lazy-seq)
 
 #+cljs (def tz-offsets
@@ -149,6 +161,10 @@
 
 (declare schedules-equiv?)
 
+;;
+;; WeeklySchedule
+;;
+
 (deftype WeeklySchedule [pattern start]
   Pattern
   (anchor  [this t]    (WeeklySchedule. pattern (as-millis t)))
@@ -161,6 +177,43 @@
   (remove-time [this hour minute] (update-schedule-pattern this remove-time hour minute))
   TimeZoneable
   (in-tz   [this tz]   (update-schedule-pattern this in-tz tz))
+  #+clj Object
+  #+clj (equals [this schedule] (schedules-equiv? this schedule))
+  #+cljs IEquiv
+  #+cljs (-equiv [this schedule] (schedules-equiv? this schedule))
+  #+clj ILookup
+  #+clj (valAt [this key] (lookup-schedule-key this key))
+  #+clj (valAt [this key not-found] (lookup-schedule-key this key not-found))
+  #+cljs ILookup
+  #+cljs (-lookup [this key] (lookup-schedule-key this key))
+  #+cljs (-lookup [this key not-found] (lookup-schedule-key this key not-found))
+  #+clj Seqable
+  #+clj (seq [this] (schedule-lazy-seq this))
+  #+cljs ISeqable
+  #+cljs (-seq [this] (schedule-lazy-seq this))
+  #+cljs IPrintWithWriter
+  #+cljs (-pr-writer [schedule writer opts]
+           (print-weekly-schedule-to-abstract-writer schedule writer -write opts)))
+
+;;
+;; Monthly
+;;
+
+(deftype MonthlySchedule [pattern start]
+  Pattern
+  (anchor  [this t]    (MonthlySchedule. pattern (as-millis t)))
+  MonthlyTriggered
+  (at-day [this day] (update-monthly-schedule-pattern this at-day day))
+  (add-day [this day] (update-monthly-schedule-pattern this add-day day))
+  (remove-day [this day] (update-monthly-schedule-pattern this remove-day day))
+  (at-hour [this hour] (update-monthly-schedule-pattern this at-hour hour))
+  (add-hour [this hour] (update-monthly-schedule-pattern this add-hour hour))
+  (remove-hour [this hour] (update-monthly-schedule-pattern this remove-hour hour))
+  (at-time [this hour minute] (update-monthly-schedule-pattern this at-time hour minute))
+  (add-time [this hour minute] (update-monthly-schedule-pattern this add-time hour minute))
+  (remove-time [this hour minute] (update-monthly-schedule-pattern this remove-time hour minute))
+  TimeZoneable
+  (in-tz   [this tz]   (update-monthly-schedule-pattern this in-tz tz))
   #+clj Object
   #+clj (equals [this schedule] (schedules-equiv? this schedule))
   #+cljs IEquiv
@@ -201,6 +254,11 @@
   (println [f pattern args start])
   (WeeklySchedule. (apply f pattern args) start))
 
+(defn- update-monthly-schedule-pattern
+  [{:keys [pattern start]} f & args]
+  (println [f pattern args start])
+  (MonthlySchedule. (apply f pattern args) start))
+
 (defn- write-n
   [coll writer write-fn serial-fn empty-fn]
   (case (count coll)
@@ -230,6 +288,20 @@
     (write-fn writer tz))
   (write-fn writer "\""))
 
+(defn- print-monthly-pattern-to-abstract-writer
+  [{:keys [days time-matches tz] :as pattern} writer write-fn opts]
+  (write-fn writer "#schedule/monthly-pattern \"")
+  (write-n days writer write-fn #(str/capitalize (name %)) (constantly "Every day"))
+  (when time-matches
+    (write-fn writer " at "))
+  (write-n (sort time-matches) writer write-fn #(let [[hour minute] %]
+                                                  (str hour ":" (when (< minute 10) "0") minute))
+           (constantly ""))
+  (when tz
+    (write-fn writer " ")
+    (write-fn writer tz))
+  (write-fn writer "\""))
+
 (defn- lookup-pattern-key
   ([pattern key] (lookup-pattern-key pattern key nil))
   ([pattern key not-found]
@@ -242,7 +314,7 @@
        not-found
        lookup))))
 
-(declare patterns-equiv?)
+(declare patterns-equiv? monthly-patterns-equiv?)
 
 (deftype WeeklyPattern [days time-matches tz]
   Pattern
@@ -274,6 +346,36 @@
   #+cljs (-pr-writer [pattern writer opts]
            (print-weekly-pattern-to-abstract-writer pattern writer -write opts)))
 
+(deftype MonthlyPattern [days time-matches tz]
+  Pattern
+  (anchor  [pattern t]    (MonthlySchedule. pattern (as-millis t)))
+  WeeklyTriggered
+  (at-hour [pattern new-hour] (MonthlyPattern. days #{[new-hour 0]} tz))
+  (add-hour [pattern new-hour] (MonthlyPattern. days (conj time-matches [new-hour 0]) tz))
+  (remove-hour [pattern del-hour] (MonthlyPattern. days (disj time-matches [del-hour 0]) tz))
+  (at-time [pattern new-hour new-minute] (MonthlyPattern. days #{[new-hour new-minute]} tz))
+  (add-time [pattern new-hour new-minute] (MonthlyPattern. days (conj time-matches [new-hour new-minute]) tz))
+  (remove-time [pattern del-hour del-minute] (MonthlyPattern. days (disj time-matches [del-hour del-minute]) tz))
+  TimeZoneable
+  (in-tz   [pattern new-tz]   (MonthlyPattern. days time-matches new-tz))
+  #+clj Object
+  #+clj (equals [this pattern] (monthly-patterns-equiv? this pattern))
+  #+cljs IEquiv
+  #+cljs (-equiv [this pattern] (monthly-patterns-equiv? this pattern))
+  #+clj ILookup
+  #+clj (valAt [this key] (lookup-pattern-key this key))
+  #+clj (valAt [this key not-found] (lookup-pattern-key this key not-found))
+  #+cljs ILookup
+  #+cljs (-lookup [this key] (lookup-pattern-key this key))
+  #+cljs (-lookup [this key not-found] (lookup-pattern-key this key not-found))
+  #+clj IDeref
+  #+clj (deref [pattern] (anchor pattern (current-time-millis)))
+  #+cljs IDeref
+  #+cljs (-deref [pattern] (anchor pattern (current-time-millis)))
+  #+cljs IPrintWithWriter
+  #+cljs (-pr-writer [pattern writer opts]
+           (print-monthly-pattern-to-abstract-writer pattern writer -write opts)))
+
 (defn patterns-equiv?
   [pattern1 pattern2]
   (and (instance? WeeklyPattern pattern1)
@@ -282,15 +384,30 @@
        (= (:time-matches pattern1) (:time-matches pattern2))
        (= (:tz pattern1) (:tz pattern2))))
 
-#+clj (defmethod print-method WeeklyPattern
-        [^WeeklyPattern pattern ^Writer w]
-        (print-weekly-pattern-to-abstract-writer pattern w #(.write %1 %2) nil))
+(defn monthly-patterns-equiv?
+  [pattern1 pattern2]
+  (and (instance? MonthlyPattern pattern1)
+       (instance? MonthlyPattern pattern2)
+       (= (:days pattern1) (:days pattern2))
+       (= (:time-matches pattern1) (:time-matches pattern2))
+       (= (:tz pattern1) (:tz pattern2))))
+
+
+#+clj (defmethod print-method MonthlyPattern
+        [^MonthlyPattern pattern ^Writer w]
+        (print-monthly-pattern-to-abstract-writer pattern w #(.write %1 %2) nil))
 
 (defn read-schedule
   [m]
   (let [pattern (:pattern m)
         start (:start m)]
     (WeeklySchedule. pattern (as-millis start))))
+
+(defn read-monthly-schedule
+  [m]
+  (let [pattern (:pattern m)
+        start (:start m)]
+    (MonthlySchedule. pattern (as-millis start))))
 
 (defn- string->int
   [int]
@@ -352,3 +469,6 @@
 
 #+cljs (reader/register-tag-parser! "schedule/weekly-pattern" read-floating-pattern)
 #+cljs (reader/register-tag-parser! "schedule/weekly-schedule" read-schedule)
+
+#+cljs (reader/register-tag-parser! "schedule/monthly-pattern" read-floating-pattern)
+#+cljs (reader/register-tag-parser! "schedule/monthly-schedule" read-monthly-schedule)
