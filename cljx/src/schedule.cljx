@@ -384,6 +384,11 @@
        (= (:time-matches pattern1) (:time-matches pattern2))
        (= (:tz pattern1) (:tz pattern2))))
 
+
+#+clj (defmethod print-method WeeklyPattern
+        [^WeeklyPattern pattern ^Writer w]
+        (print-weekly-pattern-to-abstract-writer pattern w #(.write %1 %2) nil))
+
 (defn monthly-patterns-equiv?
   [pattern1 pattern2]
   (and (instance? MonthlyPattern pattern1)
